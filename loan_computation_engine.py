@@ -362,26 +362,18 @@ def computeIRR_ForMonthlyVintage(inputDataframe):
     cashPaidOut[_g.PAYMENT_TO_CREDIT_FACILITY] = cashPaidOut[_g.VINTAGE_PRINCIPAL].apply(computeMonthlyPayment)
 
     # Our views on per-vintage out-cashflows vs. in-cashflows are now complete.  We are now prepared to use them
-    # to compute IRR, for each vintage.  We do so below, and return the result.
-    def computeIRR(dfForMonthlyVintage):
-        initialCashOutlay = dfForMonthlyVintage[_g.VINTAGE_PRINCIPAL].unique()[0]
-        cashFlows         = dfForMonthlyVintage[_g.VINTAGE_CASHFLOW_FOR_IRR].values
-        cashFlows         = np.insert(cashFlows, 0, [-1*initialCashOutlay])
-        monthIndex        = [i for i in range(0, np.size(cashFlows))]
-        # NOTE that in 'computeCashflows_ForLoanGroup(...)', we used $0 placeholders for any month without payments.
-        # This ensures that the monthIndex will not have gaps.
-        def irrDecimal(cashFlows, monthIndex):
-            def npv(irr, cashFlows, periodIndex):  
-                return np.sum(cashFlows / (1. + irr) ** periodIndex)
-            irr = fsolve(npv, x0=0.1, args=(cashFlows, monthIndex))
-            return np.asscalar(irr)
-        return irrDecimal(cashFlows, monthIndex) * 100  # Map from decimal to %
+    # to compute IRR, for each vintage.
     # For a given vintage, for each timeslice, we compare the cashflow paid to the lender by loan recipients and the
     # cashflow paid to us by the lender.  At each timeslice, the lesser of the two cashflows is used in our IRR computation.
     composite = pd.merge(cashPaidOut, cashPaidIn, on=[_g.VINTAGE_DATE])
     composite[_g.VINTAGE_CASHFLOW_FOR_IRR] = composite.apply(
         lambda row: row[_g.PAYMENT_AMOUNT_COL] if row[_g.PAYMENT_AMOUNT_COL] < row[_g.PAYMENT_TO_CREDIT_FACILITY] else row[_g.PAYMENT_TO_CREDIT_FACILITY],
         axis='columns')
+    def computeIRR(dfForMonthlyVintage):
+        initialCashOutlay = dfForMonthlyVintage[_g.VINTAGE_PRINCIPAL].unique()[0]
+        cashFlows         = dfForMonthlyVintage[_g.VINTAGE_CASHFLOW_FOR_IRR].values
+        cashFlows         = np.insert(cashFlows, 0, [-1*initialCashOutlay])
+        irrDecimal        = np.irr(cashFlows)
+        return irrDecimal * 100  # Map from decimal to %
     vintageIRR = composite.groupby(_g.VINTAGE_DATE).apply(lambda dfForMonthlyVintage: computeIRR(dfForMonthlyVintage))
-
     return vintageIRR
